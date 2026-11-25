@@ -46,7 +46,7 @@ The DSView software is in a usable state and has official tarball releases. Howe
 # Download
 
 Pre-built binaries of this fork (Linux .deb and AppImage, Windows installer and
-zip) are built by CI from `master`. They are published as the
+zip, macOS .dmg for Apple Silicon) are built by CI from `master`. They are published as the
 [latest pre-release](https://github.com/mrehkopf/DSView/releases/tag/latest).
 
 Releases from [Schildkroet/DSView](https://github.com/Schildkroet/DSView/releases)
@@ -127,6 +127,33 @@ cmake --build build
 
 See the `windows` job in [.github/workflows/build.yml](.github/workflows/build.yml)
 for how the runtime DLLs are bundled.
+
+## macOS
+
+This is the method used by CI. Install the dependencies with Homebrew:
+
+```sh
+brew install cmake pkgconf glib libusb boost fftw python@3.13 qtbase qtsvg dylibbundler librsvg
+```
+
+Build, then package a self-contained `DSView.app` and `.dmg` (Qt, the other
+libraries, Python and its standard library are copied into the bundle):
+
+```sh
+PYFW="$(brew --prefix python@3.13)/Frameworks/Python.framework/Versions/3.13"
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+    -DPython3_ROOT_DIR="$PYFW" -DPython3_FIND_STRATEGY=LOCATION -DPython3_FIND_FRAMEWORK=FIRST
+cmake --build build -j"$(sysctl -n hw.ncpu)"
+installer/macos/make-app.sh build dist 1.6.2
+```
+
+The app is signed ad hoc, not with a Developer ID, and is not notarized. When
+it was downloaded, macOS refuses to open it the first time; remove the
+quarantine attribute after copying it to Applications:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/DSView.app
+```
 
 ## Windows (cross-compile from Linux, MXE)
 

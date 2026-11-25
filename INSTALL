@@ -47,7 +47,9 @@ Arch:
 	qt6-base qt6-svg
 
 macOS (Homebrew):
- $ brew install cmake pkg-config glib libusb boost fftw python qt
+ $ brew install cmake pkgconf glib libusb boost fftw python@3.13 qtbase qtsvg
+ To build an app bundle and .dmg, see "## macOS" in README.md
+ (installer/macos/make-app.sh).
 
 Windows: see "Building for Windows" below.
 

@@ -353,9 +353,81 @@ jobs:
           name: DSView-${{ env.DSVIEW_VERSION }}-windows-x86_64-setup.exe
           path: installer/windows/Output/DSView-${{ env.DSVIEW_VERSION }}-windows-x86_64-setup.exe
 
+  macos:
+    name: macOS (arm64 .dmg)
+    runs-on: macos-15
+    env:
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Read version
+        run: |
+          # From CMakeLists.txt, for the file names below.
+          major="$(sed -nE 's/^set\(DS_VERSION_MAJOR ([0-9]+)\)/\1/p' CMakeLists.txt)"
+          minor="$(sed -nE 's/^set\(DS_VERSION_MINOR ([0-9]+)\)/\1/p' CMakeLists.txt)"
+          micro="$(sed -nE 's/^set\(DS_VERSION_MICRO ([0-9]+)\)/\1/p' CMakeLists.txt)"
+          echo "DSVIEW_VERSION=${major}.${minor}.${micro}" >> "$GITHUB_ENV"
+
+      - name: Install build dependencies
+        run: |
+          # qtbase + qtsvg rather than the "qt" meta formula: macdeployqt
+          # bundles plugins of every installed Qt module, and the others
+          # (QML, virtual keyboard, PDF, ...) are not used by DSView.
+          brew install pkgconf glib libusb boost fftw python@3.13 \
+            qtbase qtsvg dylibbundler librsvg
+
+      - name: Configure
+        run: |
+          # Link against Homebrew's python@3.13 framework explicitly, not
+          # whichever Python the runner has first in PATH. make-app.sh copies
+          # this framework and its standard library into the bundle.
+          PYFW="$(brew --prefix python@3.13)/Frameworks/Python.framework/Versions/3.13"
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPython3_ROOT_DIR="${PYFW}" \
+            -DPython3_FIND_STRATEGY=LOCATION \
+            -DPython3_FIND_FRAMEWORK=FIRST
+
+      - name: Build
+        run: cmake --build build -j "$(sysctl -n hw.ncpu)"
+
+      - name: Build app bundle and .dmg
+        run: installer/macos/make-app.sh build dist "${DSVIEW_VERSION}"
+
+      - name: Smoke test the bundle
+        run: |
+          # Start the bundled app without a window and ask it for its version
+          # and the protocol decoders, which exercises the bundled Python.
+          # DYLD_PRINT_LIBRARIES shows whether anything still loads from
+          # Homebrew instead of from the bundle.
+          APP=dist/DSView.app/Contents/MacOS
+          DYLD_PRINT_LIBRARIES=1 "$APP/DSView" --headless > dyld.log 2>&1 &
+          for i in $(seq 1 30); do
+            "$APP/dsview-ctl" info > /dev/null 2>&1 && break
+            sleep 1
+          done
+          "$APP/dsview-ctl" info
+          count="$("$APP/dsview-ctl" decoders | grep -c '"id":')"
+          echo "Protocol decoders loaded: ${count}"
+          "$APP/dsview-ctl" quit || true
+          if grep -E 'dyld.*(/opt/homebrew|/usr/local)/' dyld.log; then
+            echo "::error::The bundle loads libraries from outside the app"
+            exit 1
+          fi
+          [ "${count}" -gt 50 ] || { echo "::error::Protocol decoders did not load"; exit 1; }
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: DSView-${{ env.DSVIEW_VERSION }}-macos-arm64.dmg
+          path: dist/DSView-${{ env.DSVIEW_VERSION }}-macos-arm64.dmg
+
   release:
     name: Publish latest pre-release
-    needs: [linux, windows]
+    needs: [linux, windows, macos]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:

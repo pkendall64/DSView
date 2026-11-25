@@ -123,6 +123,16 @@ bool AppControl::Init()
             pythonPath += ";" + libDynload;
         qputenv("PYTHONPATH", pythonPath.toUtf8());
     }
+#elif defined(__APPLE__)
+    // The macOS app bundle carries Python.framework with its standard library
+    // in Contents/Frameworks (see installer/macos/make-app.sh). Point
+    // PYTHONHOME at it, so the interpreter does not fall back to the prefix
+    // it was built with (e.g. Homebrew's), which users may not have.
+    QDir pyframework(QCoreApplication::applicationDirPath()
+                     + "/../Frameworks/Python.framework/Versions/Current");
+    if (pyframework.exists("lib")){
+        qputenv("PYTHONHOME", pyframework.canonicalPath().toUtf8());
+    }
 #endif
     
     //the python script path of decoder

@@ -1230,6 +1230,10 @@ void MainFrame::show_driver_hint_once()
         "Windows. If your device does not appear in the device list, install "
         "a WinUSB driver for it (for example with the free 'Zadig' tool), "
         "then reconnect the device.");
+#elif defined(__APPLE__)
+    // macOS needs neither a driver nor a permission rule: libusb opens the
+    // device through IOKit as the logged-in user. Nothing to hint about.
+    return;
 #else
     // Skip entirely if the udev rule is already active system-wide (a
     // .deb/source "make install" already places it there) - nothing to warn
